@@ -1,0 +1,11 @@
+include('include');
+
+function Play(@enemys, @weapon, @cell, @mp, @enemyweapon, @tpa, @healAlly) {
+	TryOneShoot(EnemyLeekG);
+  NewPlay();
+	var BestHideCellz = getBestCellToHide(_MAP_DANGER , EnemyLeekG);
+	moveTowardCell(BestHideCellz);
+	if (getWeapon() == null && getTP() >= 1 && inArray(getWeapons(), WEAPON_M_LASER)) {
+		setWeapon(WEAPON_M_LASER);
+	}
+}
