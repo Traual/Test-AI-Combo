@@ -1,0 +1,124 @@
+include('include');
+StartTestFunction();
+
+function LoadActionMap() {
+	var _array = [];
+	var _arrayAlly = []; //Tricky test pour arriver a deux tableau avec key : [combo , target]
+	var _array_positiv = [];
+	var items = GetItems(_MY_SELF);
+	//JE RECUPERE LES ITEMS DE MANIERE A SAVOIR SI ILS DOIVENT ETRE UTILISES SUR ENEMY OU ALLY
+	for (var item in items) {
+		if (isPositiv(item)) {
+			removeElement(items, item);
+			push(_array_positiv, item);
+		}
+		if (isPositiv(item) == null) removeElement(items, item);
+	}
+	//FIN DU TRIAGE D'ITEMS
+	for (var cell in GetWalkableCells(_CELL[_MY_SELF], _MP[_MY_SELF])) {
+		for (var target in _ALIVE_ENEMIES) {
+			var usableitems = getAllUsableItems(cell, target, items);
+			for (var item in usableitems) if (isPositiv(item)) continue;
+			_array[cell] = usableitems; //push(_array, [cell: [usableitems, target]]);
+		}
+		for (var ally in _ALIVE_ALLIES) {
+			var usableitems = getAllUsableItems(cell, ally, _array_positiv);
+			for (var item in usableitems) if (!isPositiv(item)) continue;
+			_arrayAlly[cell] = usableitems + _array[cell]; //push(_array, [cell: [usableitems, ally]]);
+		}
+	}
+
+	_MAP_ACTION = _arrayAlly;
+}
+
+function getAllUsableItems(@cellfrom, @target, @inventory) {
+	var array = [];
+	for (var item in inventory) {
+		var area = areaNbFromWeapon(item);
+		for (var cell in useCHiporWeaponarea(item, area, target)) {
+			if (getUsableItemsFromCellToCell(cellfrom, cell, item)) {push(array, item);
+			break;}
+		}
+	}
+	return array;
+}
+
+function getUsableItemsFromCellToCell(@cell, @cellto, item) {
+	var dist = getCellDistance(cell, cellto);
+	if (!_ITEM_INLINE[item] && dist <= _ITEM_MAXRANGE[item] && dist >= _ITEM_MINRANGE[item] && lineOfSight(cell, cellto)) {
+		return true;
+	}
+	if (dist >= _ITEM_MINRANGE[item] && dist <= _ITEM_MAXRANGE[item] && isOnSameLine(cell, cellto) && lineOfSight(cell, cellto)) {
+		return true;
+	}
+	return false;
+}
+
+function getAllShootableCellz(@cell , @item) {
+StartTestFunction();
+var _final = [];
+/*var basex = getCellX(cell);
+var basey = getCellY(cell);
+	for (var x = _ITEM_MINRANGE[item]; x <= _ITEM_MAXRANGE[item] ; x++) {
+		for (var y = _ITEM_MINRANGE[item]; y<= _ITEM_MAXRANGE[item] ; y++) {
+			var cellxy = getCellFromXY(basex + x, basey + y);
+			if (cellxy!=null && !isObstacle(cellxy)) push(_final, cellxy);
+			cellxy = getCellFromXY(basex - x, basey + y);
+			if (cellxy!=null && !isObstacle(cellxy)) push(_final, cellxy);
+			cellxy = getCellFromXY(basex + x, basey - y);
+			if (cellxy!=null && !isObstacle(cellxy)) push(_final, cellxy);
+			cellxy = getCellFromXY(basex - x, basey - y);
+			if (cellxy!=null && !isObstacle(cellxy)) push(_final, cellxy);
+		}
+	}*/
+	for (var _cell in _ALL_CELLZ) {
+		if (getUsableItemsFromCellToCell(cell, _cell, item) && count(getItemTargets(item, cell))>0) {
+			push(_final, _cell);
+		}
+	}
+	StopTestFunction("AllShootable cellz");
+	return _final;
+}
+
+
+LoadActionMap();
+//debug(_MAP_ACTION);
+
+/*
+function setAllActions() {
+	_ALL_ACTIONZ = [];
+	for (var cell in GetWalkableCells(_CELL[_MY_SELF], _MP[_MY_SELF])) {
+		if (inArray(_MAP_ACTION, cell)) push(_ALL_ACTIONZ, _MAP_ACTION[cell]);
+	}
+}
+
+setAllActions();
+debug("Action map : " + _MAP_ACTION);
+
+function possibleActionsHided(@arraySafeCellz, @mycell, @mp) {
+	var array = [];
+	var BestDist = 9999;
+	var BestHidenCell;
+	for (var cell in GetWalkableCells(mycell, mp)) {
+		//Je regarde dans l'array safe cellz pour prendre la plus proche de la case en question
+		debug(_MAP_ACTION);
+		debug(_MAP_ACTION[cell]);
+		if (inArray(_MAP_ACTION, cell)) {
+			for (var hidecell in arraySafeCellz) {
+				var path = getCellDistance(cell, hidecell);
+				if (path < BestDist) {
+					BestHidenCell = hidecell;
+					BestDist = path;
+				}
+			}
+			debug(BestHidenCell);
+			//Je check toutes les actions possible 
+			if ((getPathLength(cell, mycell) + getPathLength(cell, BestHidenCell)) <= mp) push(array, _MAP_ACTION[cell]);
+		}
+	}
+	return array;
+}
+
+debug("All actions : "+_ALL_ACTIONZ);
+debug("All Hided actions : " + possibleActionsHided(_EGUAL_DMG_CELLZ, getCell(), getMP()));
+StopTestFunction("Map action");
