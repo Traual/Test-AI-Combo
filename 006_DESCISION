@@ -1,0 +1,59 @@
+include('include');
+
+function GetItems(Leek) {
+	var TabItems = [];
+	for (var i in getChips(Leek)) {
+
+		if (getCooldown(i, Leek) == 0) {
+			push(TabItems, i);
+		}
+	}
+	pushAll(TabItems, getWeapons(Leek));
+	removeElement(TabItems, CHIP_REGENERATION);
+	removeElement(TabItems, CHIP_ANTIDOTE);
+	return TabItems;
+}
+
+function MustFocusEnemy(@enemy) {
+	var totalLife = _TOTAL_LIFE[enemy];
+	var enemymgc = _MAGIC[enemy];
+	var EnemyRealLife = RealLeeklife(enemy);
+	var MyRealLife = RealLeeklife(_MY_SELF);
+	var NbBulb = getNumberOfBulb();
+	var EnemyChips = getChips(enemy);
+	var MyMgc = _MAGIC[_MY_SELF];
+	var MyStr = _STRENGTH[_MY_SELF];
+	var MyPwr = MyMgc > MyStr ? MyMgc : MyStr;
+	var Life = _LIFE[enemy];
+	var EnemyPwr = _MAGIC[enemy] > _STRENGTH[enemy] ? _MAGIC[enemy] : _STRENGTH[enemy];
+	var Score = 0;
+	if (getTurn()<=NbTurnsFullRushEnemy) Score += 45;
+	if (MyMgc >= 400) {
+		Score += (getCooldown(CHIP_LIBERATION, enemy) * 0.3);
+		Score += (getCooldown(CHIP_ANTIDOTE, enemy) * 0.8);
+		}
+	if (ShieldScore(_MY_SELF)==0) Score -= 12;
+	if (ShieldScore(_MY_SELF)<=200) Score -= 7;
+	if (ShieldScore(_MY_SELF)>=350) Score += 5;
+	if (!inArray(EnemyChips, CHIP_ANTIDOTE) && MyMgc >= 400) Score += 3;
+	if (!inArray(EnemyChips, CHIP_LIBERATION) && MyMgc >= 400) Score += 2;
+	if (EnemyPwr <= 400) Score += 4;
+	if (EnemyRealLife > MyRealLife) Score -= 8;
+	if (MyRealLife * 0.8 > EnemyRealLife) Score += 9;
+	if (NbBulb[0] > NbBulb[1]) Score += 6;
+	if (NbBulb[1] > NbBulb[0]) Score -= 6;
+	if (totalLife<1000) Score +=8;
+	if (NbBulb[0]==0) Score -= 6;
+	if (NbBulb[1]==0) Score += 14;
+	Score += (MyPwr / 100);
+	Score -= (EnemyPwr / 100);
+	return Score;
+}
+
+function FightScore(@life , @enemylife , @enemystr , @enemytp , @enemymp , @mystr , @mymp , @mytp , @enemy) {
+	var score = 0;
+	score += MustFocusEnemy(enemy);
+	
+}
+
+_FIGHT_SCORE = MustFocusEnemy(EnemyLeekG);
