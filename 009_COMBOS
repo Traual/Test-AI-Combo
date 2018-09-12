@@ -1,0 +1,674 @@
+include("include");
+global _NEAREST_ENEMY_LEEK;
+global _NEAREST_ENEMY_BULB;
+var _BEST_SAFE_CELL;
+var _BEST_TARGET;
+global _CHIP_DMG_POIS = 1; //1.7
+global _COEF_WEAPON_SHACKLE_DMG = 1;
+if (_STRENGTH[EnemyLeekG] == 0) _COEF_WEAPON_SHACKLE_DMG = 0.000000001;
+
+function IsWorth(@item, @path, @mp, @cellto, @cell, @enemy, @leek) {
+	var Score = 0;
+	var RealLife = RealLeeklife(leek);
+	var EnemyRealLife = RealLeeklife(EnemyLeekG);
+	var EnemyStr = _STRENGTH[EnemyLeekG];
+	var dmg = getItemRealDmg(item);
+	var MyMgc = _MAGIC[_MY_SELF];
+	var MyStr = _STRENGTH[_MY_SELF];
+	var EnemyChips = getChips(EnemyLeekG);
+	if (item == CHIP_SOPORIFIC) dmg *= 90;
+	if (item == CHIP_FRACTURE) dmg *= 5;
+	if (item == CHIP_INVERSION) dmg *= 5;
+	if (isPositiv(item) || isPositiv(item) == null) return 99;
+	if (!isPositiv(item)) {
+		if (ShieldScore(leek) >= 450) Score += 5;
+		if (ShieldScore(leek) < 300) Score -= 2;
+		if (ShieldScore(leek) < 100) Score -= 5;
+		//Score *= (EnemyStr/100);
+		if (ShieldScore(enemy) >= 450) Score -= 5;
+		if (ShieldScore(enemy) < 300) Score += 4;
+		if (ShieldScore(enemy) < 100) Score += 8;
+		//if (ShieldScore(enemy)==0) Score += 30;
+		if (ShieldScore(leek) > ShieldScore(enemy)) Score += 5;
+		//Score += (MustFocusEnemy(EnemyLeekG));
+		if (MyMgc >= 400) {
+			Score += (getCooldown(CHIP_LIBERATION, enemy) * 0.7);
+			Score += (getCooldown(CHIP_ANTIDOTE, enemy) * 2);
+			if (!inArray(EnemyChips, CHIP_ANTIDOTE) && MyMgc >= 400) Score += 5;
+			if (!inArray(EnemyChips, CHIP_LIBERATION) && MyMgc >= 400) Score += 2;
+		}
+		if (EnemyRealLife > RealLife + ShieldScore(leek) && EnemyStr >= 400) Score += 4;
+		if (path == mp && EnemyStr >= 300 && ShieldScore(leek) > 300) Score -= 5;
+		if (EnemyRealLife * 0.70 > RealLife) Score -= 2;
+		if (RealLife > EnemyRealLife) Score += 8;
+		if (path > mp / 1.5) Score -= 5;
+		if (path == mp) Score -= 1;
+		if (path == getTotalMP()) Score -= 3;
+		if (path < mp / 2) Score += 5;
+		Score += ((dmg / _ITEM_COST[item]) - (path / 5));
+	}
+	return Score;
+}
+
+function Best3Items(@leek) {
+	var _ITEMS = GetItems(leek);
+	var array = [];
+	for (var i = 0; i < 4; i++) {
+		var BestTP = 99;
+		var BestDMG = 0;
+		var BestChip;
+		for (var item in _ITEMS) {
+			var Cost = _ITEM_COST[item];
+			var dmg = getItemMinDmg(item);
+			if (!isOnlyBulb(item) && item != CHIP_DEVIL_STRIKE && dmg / Cost > BestDMG / BestTP) {
+				BestChip = item;
+				BestDMG = dmg;
+				BestTP = Cost;
+			}
+		}
+		removeElement(_ITEMS, BestChip);
+		if (BestChip != null) push(array, BestChip);
+	}
+	return array;
+}
+
+function UpdateItemsToHide() {
+	ItemsToHideSolo = [];
+	pushAll(ItemsToHideSolo, Best3Items(EnemyLeekG));
+}
+
+function getItemName(Item) {
+	if (isChip(Item)) {
+		return getChipName(Item);
+	} else return getWeaponName(Item);
+}
+
+
+function useItem(item, cell, weapon) {
+	if (isWeapon(item) && weapon != item) {
+		setWeapon(item);
+	}
+	var lol = isChip(item) ? useChipOnCell(item, cell) : useWeaponOnCell(cell);
+	lol;
+}
+
+function GetItemDMG(@Item) {
+	var NumberOfDMG = 0;
+	var ie = _ITEM_EFFECTS[Item];
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_DAMAGE || eff[0] == EFFECT_POISON) {
+			NumberOfDMG += max(eff[1] * (1 + eff[3] / 2) * COEF_DMG * _STRENGTH[_MY_SELF], eff[1] * (1 + eff[3] / 2) * COEF_DMG * _MAGIC[_MY_SELF]);
+			return NumberOfDMG;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_HEAL) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_HEAL;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_ABSOLUTE_SHIELD) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_ABS_SHIELD;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_RELATIVE_SHIELD) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_REL_SHIELD;
+		}
+	}
+	//debug(bulbname(ChipToName(Item), EnemyLeekG));
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_SUMMON) {
+			NumberOfDMG = bulbcoef(Item, EnemyLeekG)[1] * _COEF_SUMMON;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_BUFF_STRENGTH) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_BOOST_STR;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_BUFF_TP) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_BOOST_TP;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_BUFF_MP) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_BOOST_MP;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_SHACKLE_TP) {
+			NumberOfDMG += eff[1] * (1 + eff[3]) * COEF_SHACKLE_TP;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_SHACKLE_MP) {
+			NumberOfDMG += eff[1] * (1 + eff[3]) * _COEF_SHACKLE_MP;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_SHACKLE_STRENGTH) {
+			NumberOfDMG += eff[1] * (1 + eff[3]) * COEF_SHACKLE_STRENGTH * _COEF_WEAPON_SHACKLE_DMG;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_VULNERABILITY) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_VULNERABILITY;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_BOOST_MAX_LIFE) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_BOOST_MAX_LIFE;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_BUFF_AGILITY) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_AGILITY;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_DAMAGE_RETURN) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_DMG_RETURN;
+		}
+	}
+	for (var eff in ie) {
+		if (eff[0] == EFFECT_BUFF_RESISTANCE) {
+			NumberOfDMG = eff[1] * (1 + eff[3]) * _COEF_BOOST_RESI;
+		}
+	}
+	return NumberOfDMG;
+}
+
+function getItemCoef(Item, target) {
+	var ie = _ITEM_EFFECTS[Item];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_DAMAGE || eff[0] == EFFECT_POISON) return _COEF_DMG[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_HEAL) return _COEF_HEAL[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_ABSOLUTE_SHIELD) return _COEF_ABS_SHIELD[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_RELATIVE_SHIELD) return _COEF_REL_SHIELD[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_SUMMON) return _COEF_SUMMON[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_BUFF_STRENGTH) return _COEF_BOOST_STR[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_BUFF_TP) return _COEF_BOOST_TP[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_BUFF_MP) return _COEF_BOOST_MP[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_SHACKLE_TP) return COEF_SHACKLE_TP[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_SHACKLE_MP) return _COEF_SHACKLE_MP[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_SHACKLE_STRENGTH) return COEF_SHACKLE_STRENGTH[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_VULNERABILITY) return _COEF_VULNERABILITY[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_BOOST_MAX_LIFE) return _COEF_BOOST_MAX_LIFE[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_BUFF_AGILITY) return _COEF_AGILITY[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_DAMAGE_RETURN) return _COEF_DMG_RETURN[target];
+	for (var eff in ie)
+	if (eff[0] == EFFECT_BUFF_RESISTANCE) return _COEF_BOOST_RESI[target];
+	return 0;
+}
+
+function canUseItem(@item, @cell) {
+	var yea = isWeapon(item) ? canUseWeaponOnCell(item, cell) : canUseChipOnCell(item, cell);
+	return yea;
+}
+
+function DivideAoe(area, dist, DMG) {
+	if (dist == 0) return DMG;
+	if (dist == 1 && area == 1) return DMG * 0.5;
+	if (dist == 1 && area == 2) return DMG * 0.75;
+	if (dist == 1 && area == 3) return DMG * 0.83;
+	if (dist == 2 && area == 2) return DMG * 0.50;
+	if (dist == 2 && area == 3) return DMG * 0.67;
+	if (dist == 3 && area == 3) return DMG * 0.50;
+	return 0;
+}
+
+function getBestItemToUse(@inventory, @mp, @leekatq, @tp) {
+	if (true) return [];
+	var BestItem = CHIP_ARMORING;
+	var BestDMG = 1;
+	var BestMP = 999;
+	var BestTP = 999;
+	if (count(DeadAlly()) > 0 && tp > 15 && inArray(GetItems(_MY_SELF), CHIP_RESURRECTION) && getCooldown(CHIP_RESURRECTION) == 0) return [CHIP_RESURRECTION, 9999, 15, 0];
+	for (var i in inventory) {
+		var TabCellzItem = FindItemsCellzInArrayItemsCellsTo(i);
+		var _DMG = GetItemDMG(i);
+		var ForceOrMagic = _STRENGTH[leekatq] > _MAGIC[leekatq] ? _STRENGTH[leekatq] : _MAGIC[leekatq];
+		var Target = TabCellzItem[2];
+		var Bs = TabCellzItem[3];
+		var g = TabCellzItem[4];
+		var Path = TabCellzItem[5];
+		var getpathMechant = Path + 1;
+		var coutChange = 0;
+		if (isWeapon(i) && getWeapon() != i) coutChange = 1;
+		if (_ITEM_EFFECTS[i][0][0] == EFFECT_SUMMON) getpathMechant = 1;
+		//debugE(getItemName(i) + " Power : " + GetItemDMG(i) + " Cost : " + _ITEM_COST[i] + " Path : " + getpathMechant + " isworth : " + IsWorth(i, Path, mp, Bs, _CELL[_MY_SELF], Target, leekatq) + " Target Name : " + getName(Target));
+		if (IsWorth(i, Path, mp, Bs, _CELL[_MY_SELF], Target, leekatq) > ScoreWorthItem && Bs != null && Target != null && tp >= _ITEM_COST[i] + coutChange && Path <= mp && BestDMG / BestTP / BestMP <= _DMG / _ITEM_COST[i] / getpathMechant) {
+			BestDMG = _DMG;
+			BestTP = _ITEM_COST[i] + coutChange;
+			BestMP = getpathMechant;
+			BestItem = i;
+		}
+	}
+	return [BestItem, BestDMG, BestTP, BestMP];
+}
+
+function getUniqueItems(inventory, totalPT, currentWeapon) { // : ([ItemID], TP, ItemID) -> [UniqueID]
+	var uniqueItems = [];
+	for (var i in inventory) {
+		var CoutInitial = _ITEM_COST[i];
+		var MaxUsage = 0;
+		var Value = _ITEM_POWER[i];
+		if (Value <= 0) {
+			continue;
+		}
+		if (i != currentWeapon && isWeapon(i)) {
+			CoutInitial += 1;
+		}
+		while (CoutInitial <= totalPT) {
+			MaxUsage += 1;
+			push(uniqueItems, [i, MaxUsage, (Value * MaxUsage), CoutInitial]);
+			CoutInitial += _ITEM_COST[i];
+			if (isChip(i) && getChipCooldown(i) > 0) {
+				break;
+			}
+		}
+	}
+	return uniqueItems;
+}
+
+
+function KnapSack(inventoryUniqueItems, totalPT) {
+	var M = [];
+	var TabDe0 = [];
+	var cost = 3,
+		value = 2;
+	fill(TabDe0, 0, totalPT + 1);
+	fill(M, TabDe0, count(inventoryUniqueItems));
+	for (var j = 0; j < totalPT; j++) {
+		if (inventoryUniqueItems[0][cost] > j) {
+			//  debug("MJ : 1 : "+M[j]+ " cost  : "+inventoryUniqueItems[0][cost]);
+			M[0][j] = 0;
+		} else {
+			// debug("UI : value : "+inventoryUniqueItems[0][value]);
+			M[0][j] = inventoryUniqueItems[0][value];
+			//debug("MJ : After value debug : "+M[0][j]);
+		}
+	}
+
+	for (var i = 1; i < count(inventoryUniqueItems); i++) {
+		for (var j = 0; j <= totalPT; j++) {
+			if (inventoryUniqueItems[i][cost] > j) {
+				M[i][j] = M[i - 1][j];
+			} else {
+				//debug("M[i] : "+M[i] +" M[j] "+M[i][j] );
+				//debug('Max : '+(M[i-1][j-inventoryUniqueItems[i][cost]] + inventoryUniqueItems[i][value]));
+				M[i][j] = max(M[i - 1][j], M[i - 1][j - inventoryUniqueItems[i][cost]] + inventoryUniqueItems[i][value]);
+			}
+		}
+	}
+	//debug(M);
+	var ComboStockage = [];
+	var i = count(inventoryUniqueItems) - 1;
+	var j = totalPT;
+	var score = M[i][j];
+	//debug("Opés en plein action : " + getOperations() / 1000 + " k ");
+	//var loop = 0;
+	while (M[i][j] == M[i][j - 1]) {
+		j--;
+	}
+	while (j > 0) {
+		while (M[i][j] == M[i - 1][j]) {
+			i--;
+		}
+		j = j - inventoryUniqueItems[i][cost];
+		if (j >= 0) {
+			push(ComboStockage, i);
+		}
+		i--;
+	}
+	return [ComboStockage, score];
+	//return ComboStockage ;
+}
+
+function getRealDmg(@item, @str, @relshield, @absshield, @magic, @dist) {
+	var dmg = DivideAoe(areaNbFromWeapon(item), dist, _ITEM_POWER[item]);
+	if (_ITEM_EFFECTS[item][0][0] == EFFECT_DAMAGE) {
+		dmg = dmg * (1 + str / 100) * (1 - relshield / 100) - absshield;
+	}
+	if (_ITEM_EFFECTS[item][0][0] == EFFECT_POISON) {
+		dmg = dmg * (1 + magic / 100);
+	}
+	return dmg;
+}
+
+function getTargetableLeeks(@cellfrom, @item) { //CELL , ITEM ----> [LeeksTargetables]
+	var _array = [];
+	for (var target in _ALL_LEEKS) {
+		for (var cell in useCHiporWeaponarea(item, areaNbFromWeapon(item), target)) {
+			if (inArray(_array, target)) break;
+			if (getUsableItemsFromCellToCell(cellfrom, cell, item)) push(_array, target);
+		}
+	}
+	return _array;
+}
+
+function fromKnapsackToItems(ks, ui) {
+	var _final = [];
+	for (var id in ks[0]) {
+		for (var iteration = 0; iteration < ui[id][1]; iteration++) {
+			//debug(ui[id][1]);
+			push(_final, ui[id][0]);
+		}
+	}
+	return _final;
+}
+
+function getAllPossibleAreaCellz(item , cell) {
+	var _array_area_cellz = [];
+	var targetsleek = getTargetableLeeks(cell, item);
+				for (var target in targetsleek) {
+					for (var _acell in useCHiporWeaponarea(item, areaNbFromWeapon(item), target))
+					if (getUsableItemsFromCellToCell(cell, _acell, item) && !inArray(_array_area_cellz, _acell)) push(_array_area_cellz, _acell);
+				}
+				return _array_area_cellz;
+}
+
+function NewCombo(@inventory, @mp, @tp) {
+	StartTestFunction();
+	//TODO : var path score -= path pour eviter qu'il ailles a perpet pour faire un truc qu'il aurait pu faire de plus proche et ne pas gacher des precieux mp
+	//New System de combo prenant : un os pour les bulbes et un combo simple sur une cell si il n'y a pas de os ...
+	//TODO : Les niveau de safe c'est seulon les cellz danger
+	//TODO : Faire un os(@entity) avec le moin de pt possible donc aussi faire un try opti combo...
+
+	//MOVE Normal : 
+	//RefreshWalkableCellz(@cell , @mp)
+	//getAccesArrayCellz(cell, mp , tableau)
+	var Score = 0;
+	var arrayMove1 = [];
+	var BestScore = 0;
+	var Combo;
+	var ComboCell;
+	var _usefull = [];
+	for (var cell in GetWalkableCells(_CELL[_MY_SELF], _MP[_MY_SELF])) {
+		var dmgItemEnemy = 0;
+		var dmgItemEnemyLeek = 0;
+		var Items = _MAP_ACTION[cell];
+		var _array_area_cellz = [];
+		var ui = getUniqueItems(Items, getTP(), getWeapon());
+		var targets = [];
+		var cellzuse = [];
+		if (!isEmpty(Items) && count(Items)>1) {
+			//if (count(Items) == 1) Combo = [Items[0], _ITEM_POWER[Items[0]]];
+			if (Combo == null) Combo = KnapSack(getUniqueItems(Items, tp, getWeapon()), tp);
+			debug("ks  : "+Combo);
+			var BestAreaDist = 999;
+			var BestAreaCell;
+			debug(arrayMap(Combo[0], function(x) {
+				return getItemName(ui[x][0]) + " * " + ui[x][1];
+			}));
+			debug("from ks to items : "+fromKnapsackToItems(Combo, ui));
+			var realcombo = fromKnapsackToItems(Combo, ui);
+			//CHOIX BEST CELL TO SHOOT 
+			/*for (var item in realcombo) {
+				var targetsleek = getTargetableLeeks(cell, item);
+				for (var target in targetsleek) {
+					for (var _acell in useCHiporWeaponarea(item, areaNbFromWeapon(item), target))
+					if (getUsableItemsFromCellToCell(cell, _acell, item) && !inArray(_array_area_cellz, _acell)) push(_array_area_cellz, _acell);
+				}
+			}*/
+			for (var item in realcombo) {
+				var BestInterest = 0;
+				var _Array_Best_area_cellz = [];
+				for (var _cell in getAllPossibleAreaCellz(item , cell)) {
+					//if (_cell == null) continue;
+					var interest = 0;
+					var targetsleek = getItemTargets(item, _cell);
+					//if (isEmpty(targetsleek)) continue;
+					for (var _target in targetsleek) {
+						var HaveSense = isPositiv(item) ? isAlive(_target) : isEnemy(_target);
+						if (!HaveSense) continue;
+						//debug("Real dmg : "+getRealDmg(item, _STRENGTH[_MY_SELF], _RELATIVE_SHIELD[_target], _ABSOLUTE_SHIELD[_target], _MAGIC[_MY_SELF], getCellDistance(_cell, _CELL[_target]))+" item : "+getItemName(item) + " target : "+getName(_target)+" dist : "+getCellDistance(_cell, _CELL[_target]));
+						//debug(" coef : "+getItemCoef(item, _target));
+						/*if (!isPositiv(item)) interest-= getRealDmg(item, _STRENGTH[_MY_SELF], _RELATIVE_SHIELD[_target], _ABSOLUTE_SHIELD[_target], _MAGIC[_MY_SELF], getCellDistance(_cell, _CELL[_target])) * _COEF_HEAL[_target];*/
+						interest += getRealDmg(item, _STRENGTH[_MY_SELF], _RELATIVE_SHIELD[_target], _ABSOLUTE_SHIELD[_target], _MAGIC[_MY_SELF], getCellDistance(_cell, _CELL[_target])) * getItemCoef(item, _target);
+					}
+					if (interest > BestInterest) push(_Array_Best_area_cellz, _cell);
+				}
+				_usefull[item] = pop(_Array_Best_area_cellz);
+				if (_usefull[item]==null) {removeElement(realcombo, item); continue;}
+				debug("cell : "+_usefull[item]);
+			}
+			
+			//FIN CHOIX BEST CELL TO SHOOT
+			/*Score = Combo[1];*/
+			for (var item in realcombo) {
+				if (_usefull[item] == null) continue;
+				targets = getItemTargets(item, _usefull[item]);
+				for (var target in targets) {
+					/*if (_usefull[item] === null) {continue;} */
+					//Choix de la meilleur cell pour tirer si l'area d'avant avait bug et a return null 
+					/*for (var _acell in useCHiporWeaponarea(item, areaNbFromWeapon(item), target))
+						if (getUsableItemsFromCellToCell(cell, _acell, item)) push(_array_area_cellz, _acell);
+						for (var _areacell in _array_area_cellz) {
+							var dist = getCellDistance(_areacell, _CELL[target]);
+							if (dist < BestAreaDist) {
+								BestAreaDist = dist;
+								BestAreaCell = _areacell;
+							}
+						}
+						_usefull[item] = BestAreaCell;
+					}*/
+					BestAreaCell = _usefull[item];
+					BestAreaDist = getCellDistance(BestAreaCell, _CELL[target]);
+					//MEILLEUR CELL CHOISIS !
+					//On Score les combos : 
+					//TEST OS Something 
+					Score = getRealDmg(item, _STRENGTH[_MY_SELF], _RELATIVE_SHIELD[target], _ABSOLUTE_SHIELD[target], _MAGIC[_MY_SELF], BestAreaDist);
+					Score -= (getPathLength(_CELL[_MY_SELF], cell))*10;
+					if (canHide(cell, (_MP[_MY_SELF]-getPathLength(_CELL[_MY_SELF], cell)), _EGUAL_DMG_CELLZ)) Score += 1000;
+					if (isEnemy(target)) {
+						dmgItemEnemy += getRealDmg(item, _STRENGTH[_MY_SELF], _RELATIVE_SHIELD[target], _ABSOLUTE_SHIELD[target], _MAGIC[_MY_SELF], BestAreaDist);
+						if (dmgItemEnemy >= RealLeeklife(target)) {
+							Score += _SCORE_KILL;
+							removeElement(targets, target);
+							continue;
+						}
+						if (!isSummon(target)) {
+							if (dmgItemEnemy >= RealLeeklife(target)) {
+								Score += _SCORE_KILL;
+								removeElement(targets, target);
+								continue;
+							}
+						}
+					}
+					//debug("dmg : " + dmgItemEnemy);
+				}
+				debug("Score : " + Score);
+			}
+		}
+		if (Score > BestScore) {
+			push(arrayMove1, [fromKnapsackToItems(Combo, ui), cell, _usefull, Score]);
+			BestScore = Score;
+			ComboCell = cell;
+		}
+	}
+	arrayMove1 = pop(arrayMove1);
+	debug(getOperations() / 1000 + " k opés ");
+	debug(arrayMove1);
+	StopTestFunction("Combo");
+	return arrayMove1;
+}
+
+function NewPlay() {
+		var Nc = NewCombo(GetItems(_MY_SELF), getMP(), getTP());
+	if (Nc!=null) {
+		var Combo = Nc[0];
+		var cell = Nc[1];
+		var usefull = Nc[2];
+		moveTowardCell(cell);
+		for (var item in Combo) {
+			if (getItemTargets(item, usefull[item])) useItem(item, usefull[item], getWeapon());
+		}
+	}
+}
+
+/*
+function getAllUsableItems(@cellfrom, @baseInventory) {
+	var tab = [];
+	UpdateActions(_MY_SELF, 0 ,cellfrom);
+	for (var item in baseInventory) {
+	var TabCellItem = FindItemsCellzInArrayItemsCellsTo(item);
+	var Target = TabCellItem[2];
+	var BestCellToFire = TabCellItem[3];
+	var los = lineOfSight(cellfrom, BestCellToFire);
+	var dist = getCellDistance(cellfrom, BestCellToFire);
+		if (!_ITEM_INLINE[item] && dist >= _ITEM_MINRANGE[item] && dist <= _ITEM_MAXRANGE[item] && los) {
+			push(tab, item);
+		}
+		if (dist >= _ITEM_MINRANGE[item] && dist <= _ITEM_MAXRANGE[item] && _ITEM_INLINE[item] && isOnSameLine(cellfrom, _CELL[Target]) && los) {
+			push(tab, item);
+		}
+	}
+	return tab;
+}
+debug(getAllUsableItems(getCell(), GetItems(getLeek())));
+function getBestSingleAction(@cell, @inventory, @tp) {
+	var BestCost = 9999;
+	var BestDmg = 0;
+	var BestItem;
+	var getUsableItems = getAllUsableItems(cell, inventory);
+	if (isEmpty(getUsableItems)) return;
+	for (var item in getUsableItems) {
+		var ItemDmg = GetItemDMG(item);
+		if (item!=null && tp >= _ITEM_COST[item] && BestDmg / BestCost < ItemDmg / _ITEM_COST[item]) {
+			BestDmg = ItemDmg;
+			BestCost = _ITEM_COST[item];
+			BestItem = item;
+		}
+	}
+	return BestItem;
+}
+
+function getBestCombo(@cell, @tp, @inventory) {
+	var cost = 1;
+	var array = [];
+	var dmg = 0;
+	while (true) {
+		var item = getBestSingleAction(@cell , @inventory, @tp);
+		if (item == null) break;
+		tp -= _ITEM_COST[item];
+		if (tp < 0) break;
+		push(array, item);
+		dmg += GetItemDMG(item);
+		if (_ITEM_COOLDOWN[item] > 0) removeElement(inventory, item);
+	}
+	return [dmg, array];
+}
+
+function getBestComboCell(@tp, @inventory, @cellfrom , @mp) {
+	var BestCombo = [];
+	var BestCell;
+	var BestDmg = 0;
+	for (var cell in GetWalkableCells(cellfrom, mp)) {
+		var combo = getBestCombo(cell ,tp, inventory);
+		if (isEmpty(combo)) return;
+		if (combo[0] > BestDmg) {
+			BestCombo = [];
+			BestCell = cell;
+			BestDmg = combo[0];
+			pushAll(BestCombo, combo[1]);
+		}
+	}
+	return [BestCell, BestCombo];
+}
+
+//mark(getBestComboCell(getTP(), GetItems(_MY_SELF), _CELL[_MY_SELF], _MP[_MY_SELF]));
+debug(getOperations());
+
+function PlayCombo(@cell, @cellto, @tp, @inventory, @leek) {
+	var BestComboCell = getBestComboCell(@cellto, @tp, @inventory, @leek);
+	if (BestComboCell[0] == null) return;
+	moveTowardCell(BestComboCell[0]);
+	for (var item in BestComboCell[1]) {
+		if (item == null) break;
+		UseItem(item, cellto);
+	}
+}
+*/
+function DeadAlly() {
+	var array = [];
+	for (var i in getAllies()) {
+		if (!isSummon(i) && isDead(i)) {
+			push(array, i);
+		}
+	}
+	return array;
+}
+
+function getcelltouseitem(item, cell) {
+	return isChip(item) ? getCellToUseChipOnCell(item, cell) : getCellToUseWeaponOnCell(item, cell);
+}
+
+function badAss(leek) {
+	if (count(EnemyLeekArray()) == 1) {
+		return true;
+	} else return RealLeeklife(leek) > 0;
+}
+global os = false;
+os = false;
+
+function OS() {
+	if (_MAGIC[_MY_SELF] > 399) {
+		for (var leek in getAliveEnemies()) {
+			if (!isSummon(leek)) {
+				for (var item in GetItems(_MY_SELF)) {
+					var CellItem = getCelltoUseItem(item, _CELL[leek]);
+					var Path = getPathLength(_CELL[_MY_SELF], CellItem);
+					if (CellItem != null && _ITEM_EFFECTS[0][0] == EFFECT_POISON) {
+						if (CellItem != null && getItemMinDmg(item) * (1 + _MAGIC[_MY_SELF] / 100) > RealLeeklife(leek) && badAss(leek)) {
+
+							if (_TP[_MY_SELF] - _ITEM_COST[CHIP_TELEPORTATION] > _ITEM_COST[item] && inArray(GetItems(_MY_SELF), CHIP_TELEPORTATION) && !os) {
+								os = true;
+								useChipOnCell(CHIP_TELEPORTATION, CellItem);
+								useItem(item, _CELL[leek], getWeapon());
+								say("Il ne manquait que cette petite chose et Pouf , ça fais des chocapic !");
+								DoNotSpeak2Times = false;
+							} else {
+								if (Path <= _MP[_MY_SELF] && Path != null && _TP[_MY_SELF] > _ITEM_COST[item] && !os) {
+									os = true;
+									moveTowardCell(CellItem);
+									useItem(item, _CELL[leek], getWeapon());
+									say("Il ne manquait que cette petite chose et Pouf , ça fais des chocapic !");
+									DoNotSpeak2Times = false;
+								}
+
+							}
+						}
+					}
+				}
+				if (!os && RealLeeklife(leek) < 0 && _TP[_MY_SELF] >= 1 && getFightType() == FIGHT_TYPE_SOLO) {
+					var i = 0;
+					say("Attention " + getName(leek) + " je vais crash , ecarte toi ...");
+					while (true) i++;
+				}
+			}
+		}
+	}
+}
+
+function UrgentHeals() {
+	if (_LIFE[_MY_SELF] < _TOTAL_LIFE[_MY_SELF] - (200 * (1 + _WISDOM[_MY_SELF] / 100))) {
+		useChip(CHIP_REGENERATION, _MY_SELF);
+	}
+}
